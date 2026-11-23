@@ -18,6 +18,19 @@ from typing import Any
 OP_HANDSHAKE = 0
 OP_FRAME = 1
 
+# Rotating presence lines. No filler AI adjectives — just plain verbs paired
+# with the configured assistant name. One phrase per wall-clock minute.
+ACTIVITY_PHRASES = (
+    "Building with {name}",
+    "Shipping with {name}",
+    "Coding with {name}",
+    "Debugging with {name}",
+    "Refactoring with {name}",
+    "Deep work with {name}",
+)
+
+REPO_URL = "github.com/y0x1a/0rb1t"
+
 
 @dataclass
 class DiscordConfig:
@@ -170,17 +183,27 @@ class DiscordRPC:
         return ok
 
 
-def build_activity(ai_name: str, cfg: DiscordConfig) -> dict[str, Any]:
+def build_activity(
+    ai_name: str, cfg: DiscordConfig, now: float | None = None
+) -> dict[str, Any]:
+    """Build the Rich Presence payload.
+
+    ``details`` rotates through :data:`ACTIVITY_PHRASES` once per wall-clock
+    minute. Pass ``now`` (epoch seconds) to make the rotation deterministic in
+    tests; the live app lets the CLI refresh presence each minute.
+    """
     name = (ai_name or "0rb1t").strip() or "0rb1t"
+    stamp = time.time() if now is None else now
+    phrase = ACTIVITY_PHRASES[int(stamp // 60) % len(ACTIVITY_PHRASES)]
     return {
-        "details": f"Talking to {name}",
-        "state": "AI-powered development environment",
+        "details": phrase.format(name=name),
+        "state": REPO_URL,
         "assets": {
             "large_image": cfg.large_image or "orb1t",
             "large_text": cfg.large_text or "0rb1t",
         },
         "buttons": [
-            {"label": "GitHub", "url": "https://github.com/y0x1a/0rb1t"},
+            {"label": "GitHub", "url": f"https://{REPO_URL}"},
         ],
         "instance": False,
     }

@@ -140,7 +140,7 @@ class Terminal:
         except Exception:
             pass
         try:
-            self.write("\033[0m\033[?2004l\033[?1004l")
+            self.write("\033[0m\033[0 q\033[?2026l\033[?2004l\033[?1004l")  # reset SGR, cursor shape, sync, paste, focus
             self.flush()
         except Exception:
             pass

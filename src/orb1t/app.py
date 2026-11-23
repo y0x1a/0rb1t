@@ -412,8 +412,9 @@ class App:
             if st.get("last_error"):
                 lines.append(f"  last_error: {st['last_error']}")
             lines.append("")
-            lines.append(f"  details: Talking to {self.config.get('ui',{}).get('name','0rb1t')}")
-            lines.append("  state: AI-powered development environment")
+            activity = build_activity(str(self.config.get("ui", {}).get("name", "0rb1t")), cfg)
+            lines.append(f"  details: {activity['details']} (rotates every minute)")
+            lines.append(f"  state: {activity['state']}")
             lines.append("  button: GitHub -> https://github.com/y0x1a/0rb1t")
             if not cfg.enabled:
                 lines.append("")

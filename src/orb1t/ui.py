@@ -99,15 +99,9 @@ PINK = ACCENT  # back-compat alias
 BAR_RGB = THEMES["purple"]["BAR"]
 BAR2_RGB = THEMES["purple"]["BAR2"]
 
-LOGO = r"""
-███  ████  ████    █   █████   
-█ ░░█ █░░░█ █░░░█  ██░   ░█░░░  
-█░ ░█░████░░████░░  █░░   █░░░░ 
-█░░ █░█░░█░ █░░░█ ░ █░░   █░░   
- ███ ░█░░░█░████░░ ███░   █░░   
-  ░░░ ░░░  ░ ░░░░ ░ ░░░    ░░   
-   ░░░  ░   ░ ░░░░   ░░░    ░
-""".rstrip("\n")
+from . import brand as _brand  # noqa: E402
+
+LOGO = "\n".join(_brand.LOGO)  # single source of truth for the wordmark
 
 
 def supports_color() -> bool:

@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-from . import __version__
+from . import __version__, brand
 from .app import App
 from .errors import EngineError
 from .input_editor import InputBuffer, KeyParser
@@ -54,6 +54,14 @@ class ReplTUI:
         self.session_id: str | None = None
         self._paste_mode = False
         self._paste_buf: list[str] = []
+        # rendering: one persistent renderer (it caches formatted messages) and
+        # the last painted frame, so idle loops do not touch the terminal.
+        self._renderer: TUIRenderer | None = None
+        self._renderer_key: tuple | None = None
+        self._last_paint: tuple | None = None
+        self._last_size: tuple[int, int] | None = None
+        self._busy_started: float | None = None
+        self._discord_next_refresh: float = 0.0
 
     def theme(self):
         ui = self.app.config.get("ui", {})
@@ -61,23 +69,53 @@ class ReplTUI:
         app_name = str(ui.get("name", "0rb1t"))
         return get_theme(name, app_name=app_name)
 
+    def renderer(self) -> TUIRenderer:
+        th = self.theme()
+        key = (th.name, th.APP_NAME)
+        if self._renderer is None or self._renderer_key != key:
+            self._renderer = TUIRenderer(th)
+            self._renderer_key = key
+        return self._renderer
+
+    def _view_ctx(self) -> dict:
+        ui = self.app.config.get("ui", {})
+        return {
+            "version": __version__,
+            "cwd": str(self.app.cwd),
+            "engine_name": str(self.app.config.get("engine", {}).get("name", "engine")),
+            "show_banner": bool(ui.get("show_banner", True)),
+        }
+
+    def invalidate(self) -> None:
+        """Force the next render() to repaint everything (e.g. Ctrl+L)."""
+        self._last_paint = None
+
     def render(self) -> None:
         cols, rows = self.term.size()
-        th = self.theme()
-        renderer = TUIRenderer(th)
-        engine_name = str(self.app.config.get("engine", {}).get("name", "engine"))
-        frame, (cr, cc), _ = renderer.frame(
+        if self._busy and self._busy_started is not None:
+            el = time.monotonic() - self._busy_started
+            self.state.elapsed = el
+            self.state.tick = int(el * 12)
+        frame, (cr, cc), _ = self.renderer().frame(
             cols=cols,
             rows=rows,
             state=self.state,
             ibuf=self.ibuf,
-            version=__version__,
-            cwd=str(self.app.cwd),
             session_id=self.session_id,
-            engine_name=engine_name,
+            **self._view_ctx(),
         )
-        # Full redraw; simple and robust. Hide cursor during paint.
-        buf = "\033[?25l" + frame + f"\033[{cr};{cc}H\033[?25h"
+        sig = (frame, cr, cc)
+        if sig == self._last_paint:
+            return  # nothing changed; don't touch the terminal
+        resized = self._last_size is not None and self._last_size != (cols, rows)
+        self._last_paint = sig
+        self._last_size = (cols, rows)
+        # Every row is painted absolutely and padded to full width, so no
+        # per-frame clear is needed (that was the source of flicker).  After a
+        # resize we clear once to drop reflowed leftovers.  Synchronized output
+        # (DEC 2026) makes the update atomic on terminals that support it and
+        # is ignored by those that don't.
+        buf = "\033[?2026h\033[?25l" + ("\033[2J" if resized else "") + frame + f"\033[{cr};{cc}H\033[?25h\033[?2026l"
         self.term.write(buf)
         self.term.flush()
 
@@ -98,9 +136,11 @@ class ReplTUI:
             self.term.enter_alt()
             self.term.enable_raw()
             self.term.enable_mouse()
-            self.term.write("\033[?2004h")  # bracketed paste
+            self.term.write("\033[?2004h\033[6 q")  # bracketed paste, steady bar cursor
             self.term.flush()
             self._boot_messages()
+            # Presence was just sent; rotate the details line once a minute.
+            self._discord_next_refresh = time.monotonic() + 60.0
             self.render()
             return self.loop()
         finally:
@@ -123,10 +163,19 @@ class ReplTUI:
 
     def _install_signals(self) -> None:
         self._prev = {}
+        # Signal handlers run in the main thread between bytecodes and can
+        # interrupt queue.put() while it holds its (non-reentrant) mutex.
+        # Calling queue.put() from a handler then self-deadlocks.  Handlers may
+        # only set plain flags; the loop converts them to events safely.
+        self._signal_resize = False
+        self._signal_exit: int | None = None
+
         def on_winch(signum, frame):
-            self.events.put(("resize", None))
+            self._signal_resize = True
+
         def on_term(signum, frame):
-            self.events.put(("signal_exit", signum))
+            self._signal_exit = signum
+
         try:
             self._prev[signal.SIGWINCH] = signal.getsignal(signal.SIGWINCH)
             signal.signal(signal.SIGWINCH, on_winch)
@@ -145,6 +194,16 @@ class ReplTUI:
                 signal.signal(sig, prev)
             except Exception:
                 pass
+
+    def _poll_signals(self) -> None:
+        """Promote lock-free signal flags into queue events (main thread only)."""
+        if getattr(self, "_signal_resize", False):
+            self._signal_resize = False
+            self.events.put(("resize", None))
+        signum = getattr(self, "_signal_exit", None)
+        if signum is not None:
+            self._signal_exit = None
+            self.events.put(("signal_exit", signum))
 
     def _cleanup(self) -> None:
         self._stop = True
@@ -165,10 +224,21 @@ class ReplTUI:
 
     def _run_plain(self) -> int:
         # Fallback: preserve basic REPL behavior
-        print(f"{self.app.config.get('ui',{}).get('name','0rb1t')} v{__version__}")
+        name = self.app.config.get("ui", {}).get("name", "0rb1t")
+        if _is_tty():
+            th = self.theme()
+            print()
+            for i, row in enumerate(brand.LOGO):
+                print("  " + th.style(row.rstrip(), fg=(th.ACCENT_SOFT, th.ACCENT, th.ACCENT_DIM)[min(i, 2)]))
+            tag = th.style(name, fg=th.LAVENDER, bold=True) + th.style(f"  ·  v{__version__}", fg=th.DIM) if name != brand.NAME else th.style(f"v{__version__}", fg=th.DIM)
+            print("  " + tag + "\n")
+            prompt = "› "
+        else:
+            print(f"{name} v{__version__}")
+            prompt = "> "
         while True:
             try:
-                line = input("> ")
+                line = input(prompt)
             except EOFError:
                 print()
                 return 0
@@ -194,11 +264,27 @@ class ReplTUI:
             except EngineError as e:
                 print(f"error: {e}", file=sys.stderr)
 
+    def _refresh_discord_if_due(self) -> None:
+        """Re-send presence so the rotating details line advances each minute."""
+        now = time.monotonic()
+        if now < self._discord_next_refresh:
+            return
+        self._discord_next_refresh = now + 60.0
+        discord_cfg = self.app.config.get("integrations", {}).get("discord", {})
+        if not isinstance(discord_cfg, dict) or not discord_cfg.get("enabled", False):
+            return
+        try:
+            self.app.update_discord_presence()
+        except Exception:
+            pass  # presence is best-effort; never disturb the TUI
+
     def loop(self) -> int:
         while not self._stop:
+            self._poll_signals()
+            self._refresh_discord_if_due()
             self._drain_worker_events(render=False)
             self.render()
-            ev = self._read_event(timeout=0.1)
+            ev = self._read_event(timeout=0.05)
             if ev is None:
                 continue
             kind, payload = ev
@@ -239,18 +325,21 @@ class ReplTUI:
             self.render()
 
     def _read_event(self, timeout: float):
-        # Prefer queued events
+        # Look at queued events first, then wait on *stdin* (not on the queue)
+        # so a keypress is handled immediately instead of after the timeout.
         try:
-            return self.events.get(timeout=timeout)
+            return self.events.get_nowait()
         except queue.Empty:
             pass
-        # Read stdin
         try:
-            r, _, _ = select.select([sys.stdin], [], [], 0)
+            r, _, _ = select.select([sys.stdin], [], [], timeout)
         except Exception:
             return None
         if not r:
-            return None
+            try:
+                return self.events.get_nowait()
+            except queue.Empty:
+                return None
         try:
             data = os.read(sys.stdin.fileno(), 4096)
         except BlockingIOError:
@@ -291,6 +380,7 @@ class ReplTUI:
             if self._busy:
                 self._active_worker_id += 1  # invalidate current result
                 self._busy = False
+                self._busy_started = None
                 self.set_status("interrupted", busy=False)
                 self.state.add("system", "interrupted. request may continue in engine; result ignored.")
             else:
@@ -301,6 +391,7 @@ class ReplTUI:
                 self._stop = True
             return
         if k == "ctrl_l":
+            self.invalidate()
             return
         if self._busy:
             # Allow scrolling while busy; input is locked.
@@ -370,14 +461,10 @@ class ReplTUI:
             return
 
     def _scroll(self, delta: int) -> None:
-        # compute max scroll against current render assumptions
+        # Ask the renderer for the extent so scroll math can never drift from
+        # what is actually drawn (banner, busy line, wrapped dock, ...).
         cols, rows = self.term.size()
-        th = self.theme()
-        renderer = TUIRenderer(th)
-        transcript = renderer.render_transcript(self.state.messages, max(10, cols - 2), version=__version__, engine_name=str(self.app.config.get("engine", {}).get("name", "engine")))
-        layout = renderer.layout(cols, rows, self.ibuf)
-        vp_h = layout["viewport"]
-        max_scroll = max(0, len(transcript) - vp_h)
+        max_scroll = self.renderer().max_scroll(self.state, cols, rows, self.ibuf, **self._view_ctx())
         if delta == 0:
             return
         # When following and user scrolls up, stop following.
@@ -429,6 +516,8 @@ class ReplTUI:
 
     def _start_send(self, text: str) -> None:
         self._busy = True
+        self._busy_started = time.monotonic()
+        self.state.tick, self.state.elapsed = 0, 0.0
         self._active_worker_id += 1
         wid = self._active_worker_id
         self.set_status("", busy=True, busy_label=f"{self.app.config.get('ui',{}).get('name','0rb1t')} thinking")
@@ -452,6 +541,7 @@ class ReplTUI:
         if wid != self._active_worker_id:
             return
         self._busy = False
+        self._busy_started = None
         self.set_status("ready", busy=False)
         if payload.get("ok"):
             resp = payload.get("resp")
@@ -489,8 +579,8 @@ def main(argv: list[str] | None = None) -> int:
     tui = ReplTUI(app)
     # no-alt-screen: for now we still use TUI if tty, but can fall back; keep simple.
     if args.no_alt_screen or not bool(app.config.get("ui", {}).get("alt_screen", True)):
-        # fallback to plain for --no-alt-screen to honor flag with minimal risk
-        return tui._run_plain() if _is_tty() else tui._run_plain()
+        # Fall back to the plain REPL when the alternate screen is disabled.
+        return tui._run_plain()
     return tui.start()
 
 

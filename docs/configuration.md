@@ -106,9 +106,9 @@ Examples:
 - `large_text` - hover text for the large image
 
 Behavior:
-- Updates on startup and when AI name/config changes (`/name`, `/config set ui.name ...`, or Discord config changes).
-- Details: `Talking to {AI_NAME}` where `{AI_NAME}` is `ui.name`.
-- State: `AI-powered development environment`.
+- Updates on startup, every minute, and when AI name/config changes (`/name`, `/config set ui.name ...`, or Discord config changes).
+- Details: an action phrase ending in `{AI_NAME}` (from `ui.name`), rotating once per wall-clock minute through `Building with`, `Shipping with`, `Coding with`, `Debugging with`, `Refactoring with`, `Deep work with`.
+- State: `github.com/y0x1a/0rb1t`.
 - Button: `GitHub` -> `https://github.com/y0x1a/0rb1t`.
 - Clears presence on exit. Connection failures and missing Discord are ignored.
 

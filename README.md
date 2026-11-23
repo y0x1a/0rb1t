@@ -65,6 +65,9 @@ Useful flags:
 | `/engine` | Show active engine, health, capabilities, available adapters |
 | `/engine list` | List available engine adapters |
 | `/engine use <name>` | Switch active engine (saved to global config) |
+| `/model` | Show active/configured model |
+| `/about` | Show environment details (engine, config, integrations) |
+| `/discord [status|reconnect|enable|disable]` | Discord Rich Presence status/controls |
 | `/plugins` | List loaded plugins and errors |
 | `/context <global|project> ...` | Manage persistent context key-values |
 | `/session` | Show current session id |
@@ -96,13 +99,13 @@ Examples:
 
 ### Discord Rich Presence
 
-Discord integration is optional and disabled by default. If enabled, 0rb1t updates presence on startup and when `/name` or Discord config changes, and clears it on exit. If Discord is not running or IPC fails, 0rb1t continues normally.
+Discord integration is optional and disabled by default. If enabled, 0rb1t updates presence on startup, refreshes it every minute, and updates it when `/name` or Discord config changes, then clears it on exit. If Discord is not running or IPC fails, 0rb1t continues normally.
 
 - Create a Discord application at the Discord Developer Portal.
 - Copy the Application ID into `integrations.discord.client_id`.
 - Upload a Rich Presence art asset (e.g. `orb1t`) and set `integrations.discord.large_image`.
-- Presence details: `Talking to {AI_NAME}` (from `ui.name`).
-- Presence state: `AI-powered development environment`.
+- Presence details: a rotating action phrase ending in `{AI_NAME}` (from `ui.name`) — `Building with 0rb1t`, `Shipping with 0rb1t`, `Coding with 0rb1t`, `Debugging with 0rb1t`, `Refactoring with 0rb1t`, `Deep work with 0rb1t` — advancing once per wall-clock minute.
+- Presence state: `github.com/y0x1a/0rb1t`.
 - Button: `GitHub` -> `https://github.com/y0x1a/0rb1t`.
 
 See [docs/configuration.md](docs/configuration.md).
