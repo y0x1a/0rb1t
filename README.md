@@ -1,89 +1,121 @@
 # 0rb1t
 
-`0rb1t` is a customizable terminal intelligence environment. It provides its own CLI, config system, command/runtime layer, and extension points; engines are pluggable adapters underneath.
+`0rb1t` is a customizable terminal intelligence environment. It provides its own CLI, configuration system, command/runtime layer, and extension points, with AI engines running underneath as pluggable adapters.
 
-[OpenCode](https://opencode.ai) is the **first supported engine adapter**. 0rb1t is designed so engine-specific behavior stays isolated in `engines/`, while the product surface (UI, config, commands, plugins, profiles, context) belongs to 0rb1t.
+[OpenCode](https://opencode.ai) is the **first supported engine adapter**. Engine-specific behavior stays isolated inside `engines/`, while the product experience (UI, configuration, commands, plugins, profiles, and context) belongs to 0rb1t.
 
-> Status: early but functional. Core REPL, engine adapter boundary, OpenCode adapter, config migration, themes, and a basic plugin system work today. Larger ecosystem features (workflow engine, full agent/profile management, sandboxed plugins, additional engine adapters) are staged.
+> **Status:** Early but functional. The core REPL, engine adapter boundary, OpenCode adapter, configuration migration, themes, and basic plugin system are working. Larger ecosystem features are staged for future releases.
 
 ## What works now
 
-- **Terminal TUI REPL** - scrollable transcript viewport + fixed input dock; input stays fixed while conversation scrolls
-- **Input editor** - prompt decoration is non-editable; Enter submits, Shift+Enter inserts newline; arrow/home/end/Ctrl+A/E/K/U editing; paste and escape-sequence filtering
-- **Scrolling behavior** - mouse wheel and keyboard scrolling; auto-follows latest message, pauses on manual scroll-up, resumes at bottom
-- **Engine-backed chat** - session continuity handled by active engine adapter (OpenCode first)
-- **One-shot mode** - `0rb1t "message"` or `0rb1t --once "message"`
-- **Configurable UI** - dark purple identity, themes, display name, alt-screen/banner toggles
-- **Config system** - defaults + global + project config, validation, migration, dotted `get/set`
-- **Engine capability system** - adapters declare supported capabilities; core checks them explicitly
-- **Profiles/plugins/context** - profile records, local Python plugins, global/project key-value context
-- **Optional Discord Rich Presence** - configurable, graceful when Discord unavailable
+- **Terminal TUI REPL** - Scrollable transcript viewport with a fixed input dock.
+- **Input editor** - Non-editable prompt decoration, Enter to submit, Shift+Enter for newlines, keyboard editing, paste support, and escape-sequence filtering.
+- **Scrolling behavior** - Mouse wheel and keyboard scrolling, automatic follow mode, and manual scroll control.
+- **Engine-backed chat** - Session continuity handled by the active engine adapter.
+- **One-shot mode** - `0rb1t "message"` or `0rb1t --once "message"`.
+- **Configurable UI** - Dark purple identity, themes, display name, alternate-screen and banner controls.
+- **Configuration system** - Defaults, global and project configuration, validation, migration, and dotted `get/set` operations.
+- **Engine capabilities** - Adapters declare supported capabilities, which the core checks explicitly.
+- **Profiles, plugins, and context** - Profile records, local Python plugins, and global/project key-value context.
+- **Optional Discord Rich Presence** - Configurable integration with graceful fallback when Discord is unavailable.
 
-## Install
+## Installation
 
-Requirements:
-- Python 3.10+
-- An engine adapter's dependencies. For the default OpenCode adapter: `opencode` on `PATH`
+### Requirements
+
+- Python 3.10 or newer.
+- [pipx](https://pipx.pypa.io/stable/).
+- An installed engine adapter and its dependencies.
+
+For the default OpenCode adapter, [OpenCode](https://opencode.ai) must be installed and available on your `PATH`.
+
+### Install with pipx
 
 ```bash
-cd ~/0rb1t
-python3 -m ensurepip --upgrade --user   # if needed
-python3 -m pip install --user -e .
-export PATH="$HOME/.local/bin:$PATH"
+pipx install 0xrb1t
+```
+
+Launch 0rb1t:
+
+```bash
 0rb1t
+```
+
+Check the installed version:
+
+```bash
+0rb1t --version
+```
+
+To upgrade:
+
+```bash
+pipx upgrade 0xrb1t
 ```
 
 ## Usage
 
-Interactive:
+### Interactive mode
 
 ```bash
 0rb1t
 ```
 
-One-shot:
+### One-shot mode
 
 ```bash
 0rb1t "summarize this repo"
-0rb1t --once "explain this error" --session <session-id>
+0rb1t --once "explain this error"
+0rb1t --once "continue this task" --session <session-id>
 ```
 
-Useful flags:
+### Useful flags
 
-- `--cwd <dir>` - run engine/session in a specific directory
-- `--no-alt-screen` - run inline instead of full-screen alternate terminal
+| Flag | Description |
+|---|---|
+| `--version` | Show the installed version |
+| `--cwd <dir>` | Set the working directory for the engine/session |
+| `--no-alt-screen` | Run inline instead of using the terminal alternate screen |
+| `--once <message>` | Send a message and print the response |
+| `--session <session-id>` | Specify a session for one-shot mode |
 
 ## Built-in commands
 
 | Command | Description |
 |---|---|
-| `/help` | List commands |
+| `/help` | List available commands |
 | `/theme [name]` | List or switch themes |
-| `/name <name>` | Set assistant display name |
-| `/config [path|get|set|reset]` | Inspect/edit global config |
-| `/profile [list|use|add]` | Manage profile records |
-| `/engine` | Show active engine, health, capabilities, available adapters |
+| `/name <name>` | Set the assistant display name |
+| `/config [path|get|set|reset]` | Inspect or edit global configuration |
+| `/profile [list\|use\|add]` | Manage profile records |
+| `/engine` | Show active engine, health, capabilities, and available adapters |
 | `/engine list` | List available engine adapters |
-| `/engine use <name>` | Switch active engine (saved to global config) |
-| `/model` | Show active/configured model |
-| `/about` | Show environment details (engine, config, integrations) |
-| `/discord [status|reconnect|enable|disable]` | Discord Rich Presence status/controls |
+| `/engine use <name>` | Switch the active engine |
+| `/model` | Show the active/configured model |
+| `/about` | Show environment details |
+| `/discord [status\|reconnect\|enable\|disable]` | Control Discord Rich Presence |
 | `/plugins` | List loaded plugins and errors |
-| `/context <global|project> ...` | Manage persistent context key-values |
-| `/session` | Show current session id |
+| `/context <global\|project> ...` | Manage persistent context key-values |
+| `/session` | Show the current session ID |
 | `/new` | Start a fresh session |
-| `/clear` | Clear screen |
-| `/version` | Show version |
+| `/clear` | Clear the screen |
+| `/version` | Show the version |
 | `/exit` | Quit |
 
 ## Configuration
 
-- Global: `~/.config/0rb1t/config.json` (or `$XDG_CONFIG_HOME/0rb1t/config.json`)
-- Project: `<cwd>/.0rb1t/config.json`
+Configuration files:
 
-Merge order: `defaults <- global <- project`.
+- **Global:** `~/.config/0rb1t/config.json` (or `$XDG_CONFIG_HOME/0rb1t/config.json`)
+- **Project:** `<cwd>/.0rb1t/config.json`
 
-Examples:
+Configuration is merged in this order:
+
+```text
+defaults <- global <- project
+```
+
+### Examples
 
 ```text
 /config set ui.theme cyan
@@ -97,49 +129,89 @@ Examples:
 /config path
 ```
 
-### Discord Rich Presence
+## Discord Rich Presence
 
-Discord integration is optional and disabled by default. If enabled, 0rb1t updates presence on startup, refreshes it every minute, and updates it when `/name` or Discord config changes, then clears it on exit. If Discord is not running or IPC fails, 0rb1t continues normally.
+Discord integration is optional and disabled by default.
 
-- Create a Discord application at the Discord Developer Portal.
-- Copy the Application ID into `integrations.discord.client_id`.
-- Upload a Rich Presence art asset (e.g. `orb1t`) and set `integrations.discord.large_image`.
-- Presence details: a rotating action phrase ending in `{AI_NAME}` (from `ui.name`) — `Building with 0rb1t`, `Shipping with 0rb1t`, `Coding with 0rb1t`, `Debugging with 0rb1t`, `Refactoring with 0rb1t`, `Deep work with 0rb1t` — advancing once per wall-clock minute.
-- Presence state: `github.com/y0x1a/0rb1t`.
-- Button: `GitHub` -> `https://github.com/y0x1a/0rb1t`.
+When enabled, 0rb1t updates presence on startup, refreshes it every minute, and updates it when `/name` or Discord configuration changes. Presence is cleared on exit.
+
+If Discord is unavailable or IPC fails, 0rb1t continues normally.
+
+To configure it:
+
+1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Copy its Application ID into `integrations.discord.client_id`.
+3. Upload a Rich Presence art asset (for example, `orb1t`).
+4. Set `integrations.discord.large_image` to the asset name.
+
+Presence details rotate through phrases such as `Building with 0rb1t`, `Shipping with 0rb1t`, `Coding with 0rb1t`, and `Debugging with 0rb1t`.
+
+Presence state: `github.com/y0x1a/0rb1t`.
 
 See [docs/configuration.md](docs/configuration.md).
 
 ## Plugins
 
-Plugins are Python files with a `register(api, ctx)` function.
+Plugins are Python files containing a `register(api, ctx)` function.
 
-Locations:
+Plugin locations:
+
 - `~/.config/0rb1t/plugins/*.py`
 - `<cwd>/.0rb1t/plugins/*.py`
-- extra paths in `plugins.paths`
+- Additional paths configured through `plugins.paths`.
 
-Example: [examples/plugins/hello_plugin.py](examples/plugins/hello_plugin.py). See [docs/plugins.md](docs/plugins.md).
+Example: [examples/plugins/hello_plugin.py](examples/plugins/hello_plugin.py).
+
+See [docs/plugins.md](docs/plugins.md).
 
 ## Architecture
+
+0rb1t separates the product experience from the underlying AI engine.
+
+The engine adapter boundary allows different engines to be integrated without coupling engine-specific behavior to the core application.
 
 See [docs/architecture.md](docs/architecture.md) for module boundaries, runtime flow, and extension points.
 
 ## Development
 
+Clone the repository:
+
 ```bash
-python3 -m pip install -e .[dev]
+git clone https://github.com/y0x1a/0rb1t.git
+cd 0rb1t
+```
+
+Install development dependencies:
+
+```bash
+python3 -m pip install -e ".[dev]"
+```
+
+Run tests:
+
+```bash
 PYTHONPATH=src pytest -q
+```
+
+Run compilation checks:
+
+```bash
 python3 -m py_compile src/orb1t/*.py src/orb1t/engines/*.py src/orb1t/plugins/*.py
 ```
 
-## Project docs
+## Project documentation
 
 - [Architecture](docs/architecture.md)
 - [Configuration](docs/configuration.md)
 - [Plugins](docs/plugins.md)
 - [Contributing](CONTRIBUTING.md)
 
+## Links
+
+- **PyPI:** https://pypi.org/project/0xrb1t/
+- **GitHub:** https://github.com/y0x1a/0rb1t
+- **Issues:** https://github.com/y0x1a/0rb1t/issues
+
 ## License
 
-MIT - see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
